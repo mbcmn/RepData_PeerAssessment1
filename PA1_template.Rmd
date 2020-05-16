@@ -5,21 +5,135 @@ output:
     keep_md: true
 ---
 
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
 
 ## Loading and preprocessing the data
 
+Load the required libraries
+
+```{r, warning = FALSE, message = FALSE}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+```
+
+Download and unzip dataset
+
+```{r, warning = FALSE, message = FALSE}
+url<-"https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip"
+destfile<-paste0(getwd(),"/activity_monitoring_data.zip")
+download.file(url,destfile)
+unzip("activity_monitoring_data.zip")
+```
+
+Read the activity dataset csv into R
+
+```{r, warning = FALSE, message = FALSE}
+activity_data <- read.csv(paste0(getwd(),"/activity.csv"))
+```
 
 
 ## What is mean total number of steps taken per day?
 
+```{r, warning = FALSE, message = FALSE}
+daily_steps <- activity_data %>%
+  group_by(date) %>%
+  summarise(total_steps = sum(steps, na.rm = TRUE))
 
+mean_steps <- daily_steps %>%
+  summarise(daily_steps = mean(total_steps, na.rm = TRUE))
+
+median_steps <- daily_steps %>%
+  summarise(daily_steps = median(total_steps, na.rm = TRUE))
+```
+
+The mean of the total number of steps taken per day is `r mean_steps` and the median of the total number of steps taken per day is 
+`r median_steps`.
+
+Ignoring NAs, the mean total number of steps taken per day is `r mean(daily_steps$total_steps, na.rm = TRUE)`.
+
+
+```{r, warning = FALSE, message = FALSE}
+qplot(daily_steps$total_steps, geom="histogram")
+```
 
 ## What is the average daily activity pattern?
 
+```{r, warning = FALSE, message = FALSE}
+interval_steps <- activity_data %>%
+  group_by(interval) %>%
+  summarise(average_steps = mean(steps, na.rm = TRUE))
 
+interval_steps <- as.data.frame(interval_steps)
+
+ggplot(interval_steps, aes(interval, average_steps)) + geom_line() +
+  xlab("Interval") + ylab("Average Steps")
+
+```
+
+The interval with the maximum average steps across all the days is interval `r interval_steps[which.max(interval_steps[,2]),1]`.
 
 ## Imputing missing values
 
+activity_data[complete.cases(activity_data), ]
+
+```{r, warning = FALSE, message = FALSE}
+NAs <- nrow(((activity_data[rowSums(is.na(activity_data)), ])))
+```
+
+The total number of rows with NA in the activity dataset is `r NAs`.
+
+The following code fills the missing values in the dataset by replacing NAs with the mean steps observed in the affected interval. Otherwise the dataset is identical.
+
+```{r, warning = FALSE, message = FALSE}
+activity_data <- activity_data %>%
+  group_by(interval) %>% 
+  mutate(steps=ifelse(is.na(steps),mean(steps,na.rm=TRUE),steps)) %>%
+  ungroup()
+```
+
+```{r, warning = FALSE, message = FALSE}
+daily_steps <- activity_data %>%
+  group_by(date) %>%
+  summarise(total_steps = sum(steps, na.rm = FALSE))
+
+mean_steps <- daily_steps %>%
+  summarise(daily_steps = mean(total_steps, na.rm = FALSE))
+
+median_steps <- daily_steps %>%
+  summarise(daily_steps = median(total_steps, na.rm = FALSE))
+
+qplot(daily_steps$total_steps, geom="histogram") 
+```
+
+With missing values imputed, the mean number of steps is now `r mean_steps` and the median number of steps is now `r median_steps`, roughly 10% higher compared to when missing values were ignored. In addition, the mean is now equal to the median.
 
 
-## Are there differences in activity patterns between weekdays and weekends?
+### Are there differences in activity patterns between weekdays and weekends?
+
+```{r, warning = FALSE, message = FALSE}
+activity_data <- activity_data %>%
+  mutate(weekday = weekdays(as.POSIXct(date))) %>%
+  mutate(weekday = case_when(weekday %in% c("Saturday", "Sunday") ~ "weekend",
+                             weekday %in% c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday")  ~ "weekday")) %>%
+  mutate(weekday = as.factor(weekday)) 
+
+weekday_steps <- activity_data %>%
+  filter(weekday == "weekday") %>%
+  group_by(interval) %>%
+  summarise(average_steps = mean(steps))
+
+weekend_steps <- activity_data %>%
+  filter(weekday == "weekend") %>%
+  group_by(interval) %>%
+  summarise(average_steps = mean(steps))
+
+layout(matrix(c(1,2), nrow = 2, ncol = 1, byrow = TRUE))
+plot(weekday_steps$interval, weekday_steps$average_steps, type='l', xlab = '', ylab= "Average steps", col="blue", lwd=2 ,main="weekday")
+plot(weekend_steps$interval, weekend_steps$average_steps, type='l', xlab = "Interval", ylab= "Average steps", col="blue", lwd=2,main="weekend")
+
+```
+
+Plotting weekday and weekend activity data seperately shows that activity is distributed more evenly throughout the day on weekends unlike the weekday that sees a clear peak around 8-9 AM. Activity appears to be overall higher on weekends than on weekdays, making for a pronounced difference in activity patterns between weekdays and weekends.
